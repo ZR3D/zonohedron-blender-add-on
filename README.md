@@ -2,7 +2,7 @@
 Blender add-on for the easy creation of zonohedrons
 
 Installation Instructions  
-1 Copy this file to your Blender 3D Add-ons folder  
+1 Copy the zonohedron_blender_addon.py to your Blender 3D Add-ons folder  
 2 Go to File->User Preferences  
 3 Click on the Add-ons Tab  
 4 Under category 'Mesh' select 'Mesh: Add Zonohedron' & click the checkbox  
