@@ -1,7 +1,7 @@
 # Zonohedron-Blender-Add-on
 Blender add-on for the easy creation of zonohedrons
 
-Installation Instructions for Blender 2.8 and Above 
+Installation Instructions for Blender 2.8 and Above
 1 Download the zonohedron_blender_addon_28.py to your Computer  
 2 Go to Edit-> Preferences
 3 Click on the Add-ons Tab  
