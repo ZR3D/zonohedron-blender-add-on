@@ -1,7 +1,7 @@
 # Zonohedron-Blender-Add-on
 Blender add-on for the easy creation of zonohedrons
 
-
+Video here: https://www.youtube.com/watch?v=6M3VBeoec0E
 
 Installation Instructions for Blender 2.8 and Above (Last tested in Blender 4.5 LTS):  
 1. Download the zonohedron_blender_addon_28.py to your Computer  
@@ -25,4 +25,4 @@ Installation Instructions for Blender 2.7 and Below:
 4. Under category 'Mesh' select 'Mesh: Add Zonohedron' & click the checkbox  
 5. Click on Save User Settings  
 6. In Object mode open the Tools Panel (Toggle the letter 'T' on the keyboard)  
-7. At the bottom of the 'Create' panel you will see the Add Zonohedron panel  
+7. At the bottom of the 'Create' panel you will see the Add Zonohedron panel
