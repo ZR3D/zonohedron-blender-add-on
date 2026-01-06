@@ -26,3 +26,7 @@ Installation Instructions for Blender 2.7 and Below:
 5. Click on Save User Settings  
 6. In Object mode open the Tools Panel (Toggle the letter 'T' on the keyboard)  
 7. At the bottom of the 'Create' panel you will see the Add Zonohedron panel
+
+![zonohedron-blender](https://github.com/user-attachments/assets/a4cd0a81-d5ac-49fd-aee7-5c984c9da4ff)
+
+
