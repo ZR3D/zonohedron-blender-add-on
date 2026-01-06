@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Zonohedron 2D</title>
+<meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+<style>
+body{font-family:sans-serif; font-size: 13px; padding:0px; margin:0px; background-color:#7f9fbd;}
+.design-svg{background-color:#2f628b;}
+</style>
+</head>
+
+<body>
+  <div> 
+    <input id="sidesRange" type="range" value="9" min="4" max="38">
+  </div> 
+  <div> 
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" id="designSvg" class="design-svg" height="1200" width="1200">
+    </svg>
+</div> 
+</body>
+
+<script>
+let zoneData = {sides:0};
+let svgns = 'http://www.w3.org/2000/svg';
+let designSvg = document.getElementById('designSvg');
+const sidesRange = document.getElementById('sidesRange');
+sidesRange.addEventListener('input', updateSides);
+
+function updateSides(){
+  zoneData.sides = Number(sidesRange.value);
+  renderView();
+}
+
+function rotatePoint(centerOfRotation, pointToRotate, degrees){
+  let length = calculateDistance(centerOfRotation,pointToRotate,true); //find line distance
+  let angle = lineAngle(centerOfRotation,pointToRotate); //find current angle
+  let xRot = centerOfRotation.x + (Math.cos(Math.PI/180 * (degrees+angle))*length);
+  let yRot = centerOfRotation.y + (Math.sin(Math.PI/180 * (degrees+angle))*length);
+  return {x:xRot,y:yRot};
+}
+
+function lineAngle(pos1,pos2){
+  let deltaX = pos2.x - pos1.x ;
+  let deltaY = pos2.y - pos1.y;
+  let rad = Math.atan2(deltaY, deltaX); // In radians
+  let deg = rad * (180 / Math.PI); // In degrees
+  if(deg<0){deg+=360};
+  return deg;
+}
+
+function calculateDistance(pos1,pos2,positiveOnly){
+  let a = Number(pos1.x) - Number(pos2.x);
+  let b = Number(pos1.y) - Number(pos2.y);
+  let ans = Math.sqrt(a*a + b*b);
+  if(positiveOnly){ans = Math.abs(ans)};
+  if(isNaN(ans)){ans=10000;};
+  return ans;
+}
+
+function createPath(pathArr, fill, stroke, strokeWidth, closePath=true){
+  const path = document.createElementNS(svgns, 'path');
+  let d = '';
+  pathArr.forEach((pos,index) => {
+    d += (index===0)? `M${pos.x} ${pos.y} `:`L${pos.x} ${pos.y} `
+  });
+  if(closePath) d += 'Z';  
+  path.setAttributeNS(null, 'd', d);
+  path.setAttributeNS(null, 'fill', fill);
+  path.setAttributeNS(null, 'stroke', stroke);
+  path.setAttributeNS(null, 'stroke-width', strokeWidth);
+  path.setAttributeNS(null, 'stroke-opacity', 0.5);
+  designSvg.appendChild(path);
+}
+
+function makePolygon(posList, index, deg, centerPos, rotation){
+  const polyList = [
+    rotatePoint(centerPos, posList[index], deg+rotation),
+    rotatePoint(centerPos, posList[index+1], rotation),
+    rotatePoint(centerPos, posList[index+2], rotation),
+    rotatePoint(centerPos, posList[index+1], deg+rotation),
+  ];
+  createPath(polyList, '#12345640', '#fff', 4);
+  return polyList;
+}
+
+function renderView(){
+  designSvg.innerHTML = '';
+  const centerPos = {x:600,y:600};
+  const radius = 290;
+  const deg = 360/zoneData.sides;
+  const posList = [];
+  const halfCircleCenter = {x:centerPos.x + radius, y:centerPos.y};
+  
+  // Creates one spiral arm (half circle) and stores in posList
+  const point = {x:centerPos.x + (radius*2), y:centerPos.y};
+  let angle = 180;
+  for(let i=0; i<(zoneData.sides/2) + 1; i++){  
+    const rotation = angle + (i*deg)
+    const thisPos = rotatePoint(halfCircleCenter, point, rotation);
+    posList.push(thisPos);
+  }
+  
+  // Make polygons
+  for(let i=0; i<zoneData.sides; i++){
+    for(let j=0; j<posList.length-2; j++){ 
+      makePolygon(posList, j, deg, centerPos, i*deg);
+    }
+  }
+}
+
+function init(){
+  updateSides();
+}
+
+init();
+</script>
+</html>
