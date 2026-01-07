@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Rhombic Spirallohedron 2D</title>
+<meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+<style>
+* {box-sizing: border-box; margin: 0; padding: 0;}  
+body{font-family:sans-serif; font-size: 13px; padding:0px; margin:0px; background-color:#7f9fbd;}
+button {background:#54697e; color:#fff; padding:0.33rem; cursor:pointer; font-size: 12px; border-radius: 4px; border:none; margin-left:100px;}
+label{width:60px; text-align:right;}
+select, input{ padding: 4px; display: inline-block; float: left; border-radius: 3px; margin-right: 5px; border: none; }
+input[type=text]{width:50px; pointer-events:none;}
+.main{width:100%; max-width:800px;}
+.top-panel { display: flex; left: 0;top: 0;width: 100%;background-color: #2e3d4d; z-index: 10;color: #f1f1f1;padding: 8px 12px;align-items: center;gap: 10px; }
+.top-panel .number-spinner-group{display:flex;}
+.number-spinner-group div{flex:1}
+.number-spinner-group .number-text{flex:0 0 35px;}
+.number-text{background-color: #f1f1f1; padding:5px 7px 5px 7px; color: #000; height: 25px; margin:0px;}
+.minus-btn{border-radius:3px 0px 0px 3px; margin: 0px;}
+.plus-btn{border-radius:0px 3px 3px 0px; margin-left: 0px;}
+</style>
+</head>
+
+<body>
+  <div class="main">
+  <div class="top-panel">
+    <label id="armsLabel">Arms</label> 
+    <input id="armsRange" type="range" value="3" min="3" max="10">
+    <label>Sides</label> 
+    <div class="number-spinner-group">
+      <button id="sidesMinusButton" class="minus-btn blue">-</button>
+      <div id="sidesText" class="number-text" id="turnAngleText">0</div>
+      <button id="sidesPlusButton" class="plus-btn blue">+</button>
+    </div>
+    <label>Detail</label>
+    <input id="detailText" type="text">
+    <button id="saveSvgButton">Save SVG</button>
+  </div> 
+  <div> 
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" id="designSvg" class="design-svg" height="100%" width="100%">
+      <rect id="background" width="100%" height="100%" fill="#2f628b" x="0" y="0"/>
+      <g id="layer1"></g>
+    </svg>
+  </div> 
+</div>
+
+<script>
+const zoneData = {arms:3, sides:12, detail:4, };
+const svgns = 'http://www.w3.org/2000/svg';
+const designSvg = document.getElementById('designSvg');
+const layer1 = document.getElementById('layer1');
+const saveSvgButton = document.getElementById('saveSvgButton');
+const armsLabel = document.getElementById('armsLabel');
+const sidesText = document.getElementById('sidesText');
+const armsRange = document.getElementById('armsRange');
+const sidesMinusButton = document.getElementById('sidesMinusButton');
+const sidesPlusButton = document.getElementById('sidesPlusButton');
+const detailText = document.getElementById('detailText');
+armsRange.addEventListener('input', changeArms);
+saveSvgButton.addEventListener('click', saveSvg);
+sidesMinusButton.addEventListener('click', () => changeSides('down'));
+sidesPlusButton.addEventListener('click', () => changeSides('up'));
+
+function updateAndRender(){
+  zoneData.arms = Number(armsRange.value);
+  zoneData.detail = zoneData.sides/zoneData.arms; // 12/3 = 4 
+  sidesText.textContent = zoneData.sides 
+  armsLabel.textContent = zoneData.arms + ' Arms';
+  detailText.value = zoneData.detail;
+  renderView();
+}
+
+function changeSides(direction){
+  let sides = zoneData.sides;
+  if(direction==='up'){
+    sides += zoneData.arms;    
+  }else{
+    sides -= zoneData.arms;
+    if(sides<zoneData.arms) sides == zoneData.arms
+  }
+  zoneData.sides = sides;
+  updateAndRender();  
+}
+
+function changeArms(){
+  zoneData.arms = Number(armsRange.value);
+  zoneData.sides = zoneData.arms * 3;
+  updateAndRender()
+}
+
+function rotatePoint(centerOfRotation, pointToRotate, degrees){
+  let length = calculateDistance(centerOfRotation,pointToRotate,true); //find line distance
+  let angle = lineAngle(centerOfRotation,pointToRotate); //find current angle
+  let xRot = centerOfRotation.x + (Math.cos(Math.PI/180 * (degrees+angle))*length);
+  let yRot = centerOfRotation.y + (Math.sin(Math.PI/180 * (degrees+angle))*length);
+  return {x:xRot,y:yRot};
+}
+
+function lineAngle(pos1,pos2){
+  let deltaX = pos2.x - pos1.x ;
+  let deltaY = pos2.y - pos1.y;
+  let rad = Math.atan2(deltaY, deltaX); // In radians
+  let deg = rad * (180 / Math.PI); // In degrees
+  if(deg<0){deg+=360};
+  return deg;
+}
+
+function calculateDistance(pos1,pos2,positiveOnly){
+  let a = Number(pos1.x) - Number(pos2.x);
+  let b = Number(pos1.y) - Number(pos2.y);
+  let ans = Math.sqrt(a*a + b*b);
+  if(positiveOnly){ans = Math.abs(ans)};
+  if(isNaN(ans)){ans=10000;};
+  return ans;
+}
+
+function createPath(pathArr, fill, stroke, strokeWidth, closePath=true){
+  const path = document.createElementNS(svgns, 'path');
+  let d = '';
+  pathArr.forEach((pos,index) => {
+    d += (index===0)? `M${pos.x} ${pos.y} `:`L${pos.x} ${pos.y} `
+  });
+  if(closePath) d += 'Z';  
+  path.setAttributeNS(null, 'd', d);
+  path.setAttributeNS(null, 'fill', fill);
+  path.setAttributeNS(null, 'stroke', stroke);
+  path.setAttributeNS(null, 'stroke-width', strokeWidth);
+  layer1.appendChild(path);
+}
+
+function rotatePointList(list, rotation, centerPos){
+  list = JSON.parse(JSON.stringify(list));
+  const rotatedList = [];
+  list.forEach(point => {
+    rotatedList.push(rotatePoint(centerPos, point, rotation));
+  });
+  return rotatedList;
+}
+
+function movePointList(list, snapTarget, snapHook, segments){
+  // Do not exeed list length
+  list = JSON.parse(JSON.stringify(list));
+  segments = (segments<list.length)? segments+1:list.length; // +1 as 5 points are required for 4 segments
+  const distance = {x: snapHook.x-snapTarget.x, y: snapHook.y-snapTarget.y};
+  const movedList = [];    
+  for(let i=0; i<segments; i++){
+    const point = list[i];
+    point.x -= distance.x;
+    point.y -= distance.y;  
+    movedList.push(point);    
+  }  
+  return movedList;
+}
+
+function renderView(){
+  layer1.innerHTML = '';
+  const centerPos = {x:600,y:600};
+  const radius = 290;
+  const deg = 360/zoneData.sides;
+  const armsDegree = 360/zoneData.arms;
+  const posList = [];
+  const halfCircleCenter = {x:centerPos.x + radius, y:centerPos.y};
+  const baseArmList = [];
+  const armMeshes = [];
+  const armMeshPolygons = [];
+  
+  // Creates one spiral arm (half circle) and stores in posList
+  const point = {x:centerPos.x + (radius*2), y:centerPos.y};
+  let angle = 180;
+  for(let i=0; i<(zoneData.sides) + 1; i++){  
+    const rotation = angle + (i*deg)
+    const thisPos = rotatePoint(halfCircleCenter, point, rotation, );
+    posList.push(thisPos);
+  }
+
+   for(let i=0; i<zoneData.arms; i++){
+      const baseArmHelix = rotatePointList(posList, i*armsDegree, centerPos);
+      baseArmList.push(baseArmHelix);
+      createPath(baseArmHelix, '#f1f1f1','#333', 2, true); 
+   }
+   
+   // Move limited point list to second arm point position   
+   for(let i=0; i<zoneData.sides/2; i++){ //2 because 2d change back to i<zoneData.sides for 3d
+     const armMesh = movePointList(baseArmList[0], baseArmList[1][i], baseArmList[0][0],zoneData.detail)
+     armMeshes.push(armMesh);
+     createPath(armMesh, 'none','#ffffff', 4, false);
+   }
+
+   // Creates mesh1
+   for(let i=0; i<armMeshes.length-1; i++){
+     //create polygon
+     const m1 = armMeshes[i];
+     const m2 = armMeshes[i+1];     
+     for(let j=0; j<m1.length-1; j++){     
+      let polygon = [m1[0+j], m1[1+j],m2[1+j], m2[0+j]];
+      armMeshPolygons.push(polygon);
+      //createPath(polygon, '#f1f1f1','#333', 2, true); // For testing
+     }
+   };  
+    
+   // Repeats mesh1 for other arms
+   for(let i=0; i<zoneData.arms; i++){
+     const angle = i*armsDegree;
+     for(let j=0; j<armMeshPolygons.length; j++){
+       if(i===zoneData.arms-1 && j===armMeshPolygons.length-zoneData.detail) break;
+       const polygon = rotatePointList(armMeshPolygons[j], angle, centerPos);
+       createPath(polygon, '#f1f1f1','#333', 2, true); 
+     }
+   }
+}
+
+function saveSvg(){
+  let data = (new XMLSerializer()).serializeToString(designSvg)
+  let svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'})
+  let url = URL.createObjectURL(svgBlob)
+  const a = document.createElement('a');
+  a.setAttribute('download', 'zonohedron.svg');
+  a.setAttribute('href', url);
+  a.setAttribute('target', '_blank');
+  a.click();
+}
+
+function init(){
+  updateAndRender();
+}
+
+init();
+</script>
+</body>
+</html>
