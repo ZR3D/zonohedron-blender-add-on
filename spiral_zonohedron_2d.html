@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Spiral Zonohedron 2D</title>
+<meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+<style>
+* {box-sizing: border-box; margin: 0; padding: 0;}
+body{font-family:sans-serif; font-size: 13px; padding:0px; margin:0px; background-color:#7f9fbd;}
+button {background:#54697e; color:#fff; padding:0.33rem; cursor:pointer; font-size: 12px; border-radius: 4px; border:none; margin-left:100px;}
+label{width:60px; text-align:right;}
+select, input{ padding: 4px; display: inline-block; float: left; border-radius: 3px; margin-right: 5px; border: none; }
+input[type=text]{width:50px; pointer-events:none;}
+.main{width:100%; max-width:1700px;}
+.top-panel { display: flex; left: 0;top: 0;width: 100%;background-color: #2e3d4d; z-index: 10;color: #f1f1f1;padding: 8px 12px;align-items: center;gap: 10px; }
+.top-panel .number-spinner-group{display:flex;}
+.number-spinner-group div{flex:1}
+.number-spinner-group .number-text{flex:0 0 35px;}
+.number-text{background-color: #f1f1f1; padding:5px 7px 5px 7px; color: #000; height: 25px; margin:0px;}
+.minus-btn{border-radius:3px 0px 0px 3px; margin: 0px;}
+.plus-btn{border-radius:0px 3px 3px 0px; margin-left: 0px;}
+.design-svg{display:inline-block;}
+</style>
+</head>
+
+<body>
+  <div class="main">
+  <div class="top-panel">
+    <label>Sides</label>
+    <div class="number-spinner-group">
+      <button id="sidesMinusButton" class="minus-btn blue">-</button>
+      <div id="sidesText" class="number-text" id="turnAngleText">0</div>
+      <button id="sidesPlusButton" class="plus-btn blue">+</button>
+    </div>
+    <label id="horizontalRotationLabel">h rotation</label>
+    <input id="horizontalRotationRange" type="range" value="0" min="0" max="360">
+    <button id="saveSvgButton">Save SVG</button>
+  </div>
+  <div>
+    <div style="display:inline-block; width:800px;">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" id="designSvg" class="design-svg" height="100%" width="100%">
+      <rect id="background" width="100%" height="100%" fill="#2f628b" x="0" y="0"/>
+      <g id="topViewLayer"></g>
+    </svg>
+    </div>
+     <div style="display:inline-block; width:800px;">
+     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" id="sideViewSvg" class="design-svg" height="100%" width="100%">
+      <rect id="background" width="100%" height="100%" fill="#2f628b" x="0" y="0"/>
+      <g id="sideViewLayer"></g>
+    </svg>
+     </div>
+  </div>
+</div>
+
+<script>
+// --- Global Declarations ---
+
+const svgns = 'http://www.w3.org/2000/svg';
+const designSvg = document.getElementById('designSvg');
+const topViewLayer = document.getElementById('topViewLayer');
+const sideViewLayer = document.getElementById('sideViewLayer');
+const saveSvgButton = document.getElementById('saveSvgButton');
+const sidesText = document.getElementById('sidesText');
+const horizontalRotationRange = document.getElementById('horizontalRotationRange');
+const sidesMinusButton = document.getElementById('sidesMinusButton');
+const sidesPlusButton = document.getElementById('sidesPlusButton');
+let renderPolygons = [];
+let zoneSides = 10;
+let zoneHorizontalRotation = 0;
+let zoneSpirals = 2;
+
+saveSvgButton.addEventListener('click', saveSvg);
+sidesMinusButton.addEventListener('click', () => changeSides('down'));
+sidesPlusButton.addEventListener('click', () => changeSides('up'));
+horizontalRotationRange.addEventListener('input', changeHorizontalRotation);
+
+
+// --- Helper Functions ---
+function updateAndRender(){
+  sidesText.textContent = zoneSides
+  renderView();
+}
+
+function saveSvg(){
+  let data = (new XMLSerializer()).serializeToString(designSvg)
+  let svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'})
+  let url = URL.createObjectURL(svgBlob)
+  const a = document.createElement('a');
+  a.setAttribute('download', 'zonohedron.svg');
+  a.setAttribute('href', url);
+  a.setAttribute('target', '_blank');
+  a.click();
+}
+
+function changeSides(direction){
+  let sides = zoneSides;
+  if(direction==='up'){
+    sides += 1;
+  }else{
+    sides -= 1;
+    if(sides<4) sides = 4;
+  }
+  zoneSides = sides;
+  updateAndRender();
+}
+
+function changeHorizontalRotation(){
+  zoneHorizontalRotation = Number(horizontalRotationRange.value);
+  updateAndRender()
+}
+
+// Rotates a point around a center point in 3D space
+function rotatePoint3D(center, point, degrees) {
+    let radX = degrees.x * (Math.PI / 180);
+    let radY = degrees.y * (Math.PI / 180);
+    let radZ = degrees.z * (Math.PI / 180);
+
+    // Translate point so center is at origin (0,0,0)
+    let p = {
+        x: point.x - center.x,
+        y: point.y - center.y,
+        z: point.z - center.z
+    };
+
+    // Rotate around X-axis
+    let xStep = {
+        x: p.x,
+        y: p.y * Math.cos(radX) - p.z * Math.sin(radX),
+        z: p.y * Math.sin(radX) + p.z * Math.cos(radX)
+    };
+
+    // Rotate around Y-axis
+    let yStep = {
+        x: xStep.x * Math.cos(radY) + xStep.z * Math.sin(radY),
+        y: xStep.y,
+        z: -xStep.x * Math.sin(radY) + xStep.z * Math.cos(radY)
+    };
+
+    // Rotate around Z-axis (This is what your 2D function did)
+    let zStep = {
+        x: yStep.x * Math.cos(radZ) - yStep.y * Math.sin(radZ),
+        y: yStep.x * Math.sin(radZ) + yStep.y * Math.cos(radZ),
+        z: yStep.z
+    };
+
+    // Translate back to the original center
+    return {
+        x: zStep.x + center.x,
+        y: zStep.y + center.y,
+        z: zStep.z + center.z
+    };
+}
+
+function lineAngle(pos1,pos2){
+  let deltaX = pos2.x - pos1.x ;
+  let deltaY = pos2.y - pos1.y;
+  let rad = Math.atan2(deltaY, deltaX); // In radians
+  let deg = rad * (180 / Math.PI); // In degrees
+  if(deg<0){deg+=360};
+  return deg;
+}
+
+function calculateDistance(pos1,pos2,positiveOnly=true){
+  let a = Number(pos1.x) - Number(pos2.x);
+  let b = Number(pos1.y) - Number(pos2.y);
+  let ans = Math.sqrt(a*a + b*b);
+  if(positiveOnly){ans = Math.abs(ans)};
+  if(isNaN(ans)){ans=10000;};
+  return ans;
+}
+
+function getPolygonCentroid(ptsOriginal) {
+  pts = Object.create(ptsOriginal);
+  let first = pts[0]
+  let last = pts[pts.length-1];
+  if (first.x != last.x || first.y != last.y) pts.push(first);
+  let twicearea=0,
+  x=0, y=0,
+  nPts = pts.length,
+  p1, p2, f;
+  for(let i=0, j=nPts-1; i<nPts; j=i++){
+    p1 = pts[i]; p2 = pts[j];
+    f = p1.x*p2.y - p2.x*p1.y;
+    twicearea += f;
+    x += ( p1.x + p2.x ) * f;
+    y += ( p1.y + p2.y ) * f;
+  }
+  f = twicearea * 3;
+  return { x:x/f, y:y/f };
+}
+
+function createPath(pathArr, fill, stroke, strokeWidth, layer, closePath=true){
+  const path = document.createElementNS(svgns, 'path');
+  let d = '';
+  pathArr.forEach((pos,index) => {
+    d += (index===0)? `M${pos.x} ${pos.y} `:`L${pos.x} ${pos.y} `
+  });
+  if(closePath) d += 'Z';
+  path.setAttributeNS(null, 'd', d);
+  path.setAttributeNS(null, 'fill', fill);
+  path.setAttributeNS(null, 'stroke', stroke);
+  path.setAttributeNS(null, 'stroke-width', strokeWidth);
+  layer.appendChild(path);
+  return path;
+}
+
+function rotatePointList(list, rotation, centerPos){
+  list = JSON.parse(JSON.stringify(list));
+  const rotatedList = [];
+  list.forEach(point => {
+    rotatedList.push(rotatePoint3D(centerPos, point, {x:0, y:0, z:rotation}));
+  });
+  return rotatedList;
+}
+
+function movePointList(list, snapTarget, snapHook, segments){
+  // Do not exeed list length
+  list = JSON.parse(JSON.stringify(list));
+  segments = (segments<list.length)? segments+1:list.length;
+  const distance = {
+    x: snapHook.x-snapTarget.x,
+    y: snapHook.y-snapTarget.y,
+    z: snapHook.z-snapTarget.z
+    };
+
+  const movedList = [];
+  for(let i=0; i<segments; i++){
+    const point = list[i];
+    point.x -= distance.x;
+    point.y -= distance.y;
+    point.z -= distance.z;
+    movedList.push(point);
+  }
+  return movedList;
+}
+
+function convertTopToSideView(pointList){
+  const cloneList = JSON.parse(JSON.stringify(pointList));
+  const zAdjust = 50;
+  cloneList.forEach(point => {
+    point.y = point.z + zAdjust;
+  });
+  return cloneList;
+}
+
+function getAverage(points){
+  const center = points.reduce(
+    (acc, p) => ({
+      x: acc.x + p.x,
+      y: acc.y + p.y,
+      z: acc.z + p.z
+    }),
+    { x: 0, y: 0, z: 0 }
+  );
+  center.x /= points.length;
+  center.y /= points.length;
+  center.z /= points.length;
+  return center;
+}
+
+function drawPolygons(polygons, centerPos, fill, mode){
+
+  const stroke = '#ddd';
+  
+  let polygonsClone = JSON.parse(JSON.stringify(polygons));
+  polygonsClone.forEach(polygon => {
+    polygon.polygon = rotatePointList(polygon, zoneHorizontalRotation, centerPos);
+    const average = getAverage(polygon.polygon);
+    polygon.xAverage = average.x;
+    polygon.yAverage = average.y;
+    polygon.zAverage = average.z;
+    polygon.fill = fill;
+  });
+  
+  if(mode==='new' || mode==='single'){
+    renderPolygons = polygonsClone;    
+  }else if(mode==='add' || mode==='render'){
+    renderPolygons = renderPolygons.concat(polygonsClone);
+  }
+  
+  //console.log()
+  
+  if(mode==='render' || mode==='single'){
+      
+  // Sort and draw for top view
+  renderPolygons.sort((a,b) => b.zAverage - a.zAverage);
+  renderPolygons.forEach((polygon, index) => {
+    createPath(polygon.polygon, polygon.fill, stroke, 2, topViewLayer, true);
+  });
+
+  // Sort and draw for side view
+  renderPolygons.sort((a,b) => a.yAverage - b.yAverage);
+  renderPolygons.forEach((polygon, index) => {
+    createPath(convertTopToSideView(polygon.polygon), polygon.fill, stroke, 2, sideViewLayer, true);
+  });
+  }
+}
+
+function renderView(){
+  topViewLayer.innerHTML = '';
+  sideViewLayer.innerHTML = '';
+
+  const centerPos = {x:600, y:600, z:600};
+  const radius = 70;
+  const height = 350;
+  const spineHelixCount = 2;
+  const heightOffset = height/zoneSides;
+  const deg = 360/zoneSides;
+  const halfCircleCenter = {x:centerPos.x + radius, y:centerPos.y, z:centerPos.z};
+  const firstSpiralArm = [];
+  const singleLeafPolygons = [];
+  const doubleLeafPolygons = [];
+  const topShell = [];
+  const spiralCase = [];
+  const bottomShell = [];
+  let baseSpiralArm = [];
+
+  // Create firstSpiralArm and baseSpiralArm
+  let point = {x:centerPos.x + (radius*2), y:centerPos.y, z:0};
+  for(let i=0; i<(zoneSides) + 1; i++){
+    const rotation = 180 + (i*deg);
+    const spiralPoint = rotatePoint3D(halfCircleCenter, point, {x:0, y:0, z:rotation})
+    firstSpiralArm.push(spiralPoint);
+    const rotationCounter =  180 + -(i*deg);
+    baseSpiralArm.push(rotatePoint3D(halfCircleCenter, point, {x:0, y:0, z:rotationCounter}));
+    point.z += heightOffset;    
+  }
+  
+  // Rotate baseSpiralArm
+  baseSpiralArm = rotatePointList(baseSpiralArm, (zoneSides/2) * -deg, centerPos);
+  
+  // Create secondSpiralArm
+  const secondSpiralArm = rotatePointList(firstSpiralArm, deg, firstSpiralArm[0]);
+
+  // Create leaf A
+  for(let i=0; i<firstSpiralArm.length-2; i++){
+    const polygon = [secondSpiralArm[0+i], secondSpiralArm[1+i], firstSpiralArm[2+i], firstSpiralArm[1+i]];
+    singleLeafPolygons.push(polygon);
+  }
+
+  // Create top shell
+  let count = zoneSides;
+  for(let i=0; i<zoneSides; i++){
+    singleLeafPolygons.forEach((polygon, index) => {
+      const rotatedPolygon = rotatePointList(polygon, i*deg, centerPos);
+      if(i===zoneSides-1){
+        // Create doubleLeafPolygons
+        doubleLeafPolygons.push(rotatedPolygon);
+      }else{
+        if(index<count-1) topShell.push(rotatedPolygon);
+      }
+    });
+    count--;
+  }
+
+  // Extend doubleLeafPolygons by translating second leaf 
+  doubleLeafPolygons.forEach(polygon => {
+    const ext = movePointList(polygon, baseSpiralArm[1], doubleLeafPolygons[0][0], zoneSides);
+    doubleLeafPolygons.push(ext)
+  });
+  
+  // Create spiral case
+  for(let i=0; i<zoneSides-1; i++){
+    doubleLeafPolygons.forEach(polygon => {
+      // Rotate doubleLeafPolygons
+      const rotatedPolygon = rotatePointList(polygon, (i+1)*-deg, centerPos);
+      // Move doubleLeafPolygons
+      const movedPolygon = movePointList(rotatedPolygon, baseSpiralArm[i+1], doubleLeafPolygons[0][0], zoneSides);
+      // Add to polygons list
+      spiralCase.push(movedPolygon);
+    });
+  }
+
+  const spiralCaseComplete = doubleLeafPolygons.concat(spiralCase);
+
+  // Repeat spirals if more than 1
+  const spiralCaseExtensions = [];   
+  for(let i=1; i<zoneSpirals; i++){
+    spiralCaseComplete.forEach(polygon => {
+      spiralCaseExtensions.push(movePointList(polygon, {x:0, y:0, z:height*i}, {x:0, y:0, z:0}, zoneSides));
+    });
+  }
+
+  // Create bottom shell by rotating the top shell
+  topShell.forEach(polygon => {
+    const poly = [];
+    polygon.forEach(point => {      
+      const rotatedPoint = rotatePoint3D(baseSpiralArm[baseSpiralArm.length-1], point, {x:0, y:180, z:180});
+      if(zoneSpirals>1){
+        rotatedPoint.z += height*(zoneSpirals-1);
+      }
+      poly.push(rotatedPoint);      
+    });
+    bottomShell.push(poly)
+  });
+    
+  const allPolygons = topShell.concat(spiralCaseComplete, spiralCaseExtensions, bottomShell); 
+    
+  drawPolygons(allPolygons, centerPos, '#123456', 'single')
+  //console.log(JSON.stringify(allPolygons))
+  
+}
+
+function init(){
+  updateAndRender();
+}
+
+init();
+</script>
+</body>
+</html>
