@@ -40,11 +40,22 @@ input[type=text], input[type=number]{width:80px;}
       <option value="3V">3V</option>
       <option value="4V">4V</option>
       <option value="4V Faceted">4V Faceted</option>
+      <option value="2V Class II">2V Class II</option>
     </select>
+    <label>Base Shape</label>
+    <select id="baseShapeSelect">
+      <option value="icosahedron">Icosahedron</option>
+      <option value="octahedron">Octahedron</option>
+      <option value="tetrahedron">Tetrahedron</option>
+    </select>    
     <label>Radius</label>
     <input id="radiusInput" type="number" value="200"> 
-    <label>Show Icosahedron</label>
-    <input id="showIcosahedronCheck" type="checkbox" checked="true">       
+    <label>Show Base Shape</label>
+    <input id="showBaseShapeCheck" type="checkbox" checked="true">
+    <label>Show Base Lattice</label>
+    <input id="showBaseLatticeCheck" type="checkbox"> 
+    <label>Show Sphere</label>
+    <input id="showSphereCheck" type="checkbox">        
     <label id="horizontalRotationLabel">h rotation</label>
     <input id="horizontalRotationRange" type="range" value="0" min="0" max="360">
     <button id="saveSvgButton">Save SVG</button>
@@ -52,10 +63,10 @@ input[type=text], input[type=number]{width:80px;}
   <div>
     <div style="display:inline-block; width:800px;">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" id="designSvg" class="design-svg" height="100%" width="100%">
-      <rect id="background" width="100%" height="100%" fill="#2f628b" x="0" y="0"/>
-      
+      <rect id="background" width="100%" height="100%" fill="#2f628b" x="0" y="0"/>      
       <g id="topViewLayer"></g>
       <g id="topViewLayerEdge"></g>
+      <g id="latticeLayer"></g>
     </svg>
     </div>
      <div style="display:inline-block; width:800px;">
@@ -75,31 +86,47 @@ const svgns = 'http://www.w3.org/2000/svg';
 const designSvg = document.getElementById('designSvg');
 const topViewLayer = document.getElementById('topViewLayer');
 const topViewLayerEdge = document.getElementById('topViewLayerEdge');
+const latticeLayer = document.getElementById('latticeLayer');
 const sideViewLayer = document.getElementById('sideViewLayer');
 const sideViewLayerEdge = document.getElementById('sideViewLayerEdge');
 const saveSvgButton = document.getElementById('saveSvgButton');
 const alternateDivisionSelect = document.getElementById('alternateDivisionSelect');
+const baseShapeSelect = document.getElementById('baseShapeSelect');
 const radiusInput = document.getElementById('radiusInput');
-const showIcosahedronCheck = document.getElementById('showIcosahedronCheck');
+const showBaseShapeCheck = document.getElementById('showBaseShapeCheck');
 const horizontalRotationRange = document.getElementById('horizontalRotationRange');
 const strutOverlay = document.getElementById('strutOverlay');
 const colors = ['#DADA2D','#30B430','#498ED4','#EE7C32','#3E9B9B','#C748E7','#D13330'];
 
 let renderPolygons = [];
+let baseShapes = {};
 let domeHorizontalRotation = 0;
 let domeAlternateDivision = '2V';
+let domeBaseShape = 'icosahedron';
 let domeRadius = 200;
-let domeShowIcosahedron = true;
+let domeShowBaseShape = true;
+let domeShowBaseLattice = false;
+let domeShowSphere = false;
+let latticePattern;
+const latticeTriangle = [];
 
 saveSvgButton.addEventListener('click', saveSvg);
 horizontalRotationRange.addEventListener('input', changeHorizontalRotation);
 alternateDivisionSelect.addEventListener('input', changeAlternateDivision);
+baseShapeSelect.addEventListener('input', changeBaseShape);
 radiusInput.addEventListener('input', changeRadius);
-showIcosahedronCheck.addEventListener('change', changeShowIcosahedron);
+showBaseShapeCheck.addEventListener('change', changeShowBaseShape);
+showBaseLatticeCheck.addEventListener('change', changeShowBaseLattice);
+showSphereCheck.addEventListener('change', changeShowSphere);
 
 // --- Helper Functions ---
 function changeAlternateDivision(){
   domeAlternateDivision = alternateDivisionSelect.value;
+  updateAndRender();
+}
+
+function changeBaseShape(){
+  domeBaseShape = baseShapeSelect.value;
   updateAndRender();
 }
 
@@ -108,8 +135,18 @@ function changeRadius(){
   updateAndRender();
 }
 
-function changeShowIcosahedron(){
-  domeShowIcosahedron = (showIcosahedronCheck.checked)? true:false
+function changeShowBaseShape(){
+  domeShowBaseShape = (showBaseShapeCheck.checked)? true:false
+  updateAndRender();
+}
+
+function changeShowBaseLattice(){
+  domeShowBaseLattice = (showBaseLatticeCheck.checked)? true:false
+  updateAndRender();
+}
+
+function changeShowSphere(){
+  domeShowSphere = (showSphereCheck.checked)? true:false
   updateAndRender();
 }
 
@@ -175,11 +212,13 @@ function rotatePoint3D(center, point, degrees) {
     };
 }
 
-function pointAtDistance(center, point, distance) {
+function pointAtDistance(center, point, distance, unprojected=false) {
+  if(unprojected || domeShowBaseLattice) return point;
+    
   const dx = point.x - center.x;
   const dy = point.y - center.y;
   const dz = point.z - center.z;
-
+  
   const length = Math.sqrt(dx*dx + dy*dy + dz*dz);
   if (length === 0) {
     throw new Error("Point must not be the same as center");
@@ -196,12 +235,20 @@ function pointAtDistance(center, point, distance) {
   };
 }
 
-function findPointOnLine(pos1, pos2, percent) {
+function snapPoint(p, eps = 1e-9) {
   return {
+    x: Math.round(p.x / eps) * eps,
+    y: Math.round(p.y / eps) * eps,
+    z: Math.round(p.z / eps) * eps
+  };
+}
+
+function findPointOnLine(pos1, pos2, percent) {
+  return snapPoint({
     x: pos1.x + (pos2.x - pos1.x) * percent,
     y: pos1.y + (pos2.y - pos1.y) * percent,
     z: pos1.z + (pos2.z - pos1.z) * percent
-  };
+  });
 }
 
 function midPoint(a,b){
@@ -258,7 +305,6 @@ function calculateDistance3D(pos1, pos2, positiveOnly) {
 
     return ans;
 }
-
 
 function getAverage(points){
   const center = points.reduce(
@@ -358,7 +404,6 @@ function computeStrutGroups(polygons, tolerance = 1e-5) {
   return groups;
 }
 
-
 function drawPolygons(polygons, center, fill, mode){
   
   const stroke = '#ddd';
@@ -397,10 +442,10 @@ function drawPolygons(polygons, center, fill, mode){
   }
 }
 
-function pointAtDistanceFromMidpoint(a, b, center, radius, percent=0.5){
+function pointAtDistanceFromMidpoint(a, b, center, radius, unprojected=false, percent=0.5){
   //const midPointPosition = midPoint(a, b);
   const midPointPosition = findPointOnLine(a, b, percent)
-  return pointAtDistance(center, midPointPosition, radius);
+  return pointAtDistance(center, midPointPosition, radius, unprojected);
 }
 
 function createRing(center, point, shapeCorners){
@@ -413,21 +458,46 @@ function createRing(center, point, shapeCorners){
   return pointList;
 }
 
+function createLatticeTriangle(center){
+  if(latticeTriangle.length === 3) return latticeTriangle;
+  const yValue = 380;
+  const xValue = -430;
+  const startPoint = {x:center.x + xValue + -180, y:center.y+yValue, z:center.z};
+  for(let i=0; i<3; i++){
+    latticeTriangle.push(rotatePoint3D({x:center.x + xValue, y:center.y+yValue, z:center.z}, startPoint, {x:0, y:0, z: (i * 120)+90}))
+  }  
+  return latticeTriangle
+}
+
+function displayLatticeTriangle(latticePattern){
+  //createPath(latticeTriangle, '#65123450', '#f1f1f1', 2, latticeLayer, true);
+  //console.log(latticePattern)
+  latticePattern.forEach(pattern => {
+    createPath(pattern, '#12653450', '#f1f1f1', 2, latticeLayer, true);
+  })
+}
+
 function checkWaterLine(pattern, waterline){
+  if(domeShowSphere) return true;
   const averagePosition = getAverage(pattern)
   return averagePosition.z < waterline;
 }
 
-
+//Calculate base shapes once...
 function renderView(){
   topViewLayer.innerHTML = '';
   sideViewLayer.innerHTML = '';
+  latticeLayer.innerHTML = '';
   const icosahedron = [];
+  //let baseShape = [];
   const allPolygons = [];
   const center = {x:600, y:600, z:600};
   const radius = 200;
   const halfRadius = radius/2;
   const keyAngle = (Math.atan(2) * 180) / Math.PI; // 63.43494882292201
+  const angleFromHorizontalDeg = Math.acos(1 / Math.sqrt(3)) * 180 / Math.PI;
+  const octKeyAngle = 90 - angleFromHorizontalDeg;
+  
   
   const topPoint = {x:center.x, y:center.y, z:center.z-radius}
   const bottomPoint = {x:center.x, y:center.y, z:center.z+radius}
@@ -436,144 +506,225 @@ function renderView(){
   const firstRing = createRing(center, firstRingStart, 5);
   const secondRing = createRing(center, secondRingStart, 5);
   
-  // Octahedron
-  //const isometricRatio = Math.sqrt(3)/2; //0.8660254037844386
-  //const triangleHeight = radius * isometricRatio;
-  //const triangleHeightRotated =  rotatePoint3D(center, {x:center.x, y:center.y, z:center.z + triangleHeight}, {x:0, y:35, z:0});
-  //const triangleCornerPoint = {{x:center.x + (center.x-triangleHeightRotated.x), y:center.y + (radius/2), z:center.z}
-  //console.log(triangleHeight, triangleHeightRotated, triangleCornerPoint)
-  //console.log(
-  //calculateDistance(pos1,pos2,positiveOnly)
-  
-  //const octCornerPoint = {x:center.x- halfRadius, y:center.y-halfRadius, z:center.z}
-  //const octTopPointStart = {x:octCornerPoint.x, y:octCornerPoint.y, z:octCornerPoint.z + radius}
-  //const octTopPoint = rotatePoint3D(octCornerPoint, octTopPointStart, {x:30, y:30, z:0});
-  //console.log(octCornerPoint, octTopPointStart, octTopPoint)
-  const octahedron = [];
-  const octahedronCenterRing = [];
-  const octahedronEdgeLength = radius * Math.sqrt(2);
-  for(let i=0; i<4; i++){
-    octahedronCenterRing.push(rotatePoint3D(center, {x:center.x + radius, y:center.y, z:center.z}, {x:0, y:0, z: (i * 90) -45}));
-  }
-  const octTopPointStart = {x:octahedronCenterRing[3].x, y:octahedronCenterRing[3].y, z:octahedronCenterRing[3].z - octahedronEdgeLength}
-  const octTopPoint = rotatePoint3D(octahedronCenterRing[3], octTopPointStart, {x:30, y:-35, z:0});
-  const octBottomPoint = {x:center.x, y:center.y, z:center.z - (octTopPoint.z - center.z) }
-  
-  octahedron.push(octahedronCenterRing)
-  octahedron.push([octahedronCenterRing[0],octahedronCenterRing[1],octTopPoint])
-  octahedron.push([octahedronCenterRing[1],octahedronCenterRing[2],octTopPoint])
-  octahedron.push([octahedronCenterRing[2],octahedronCenterRing[3],octTopPoint])
-  octahedron.push([octahedronCenterRing[0],octahedronCenterRing[0],octTopPoint])
-  octahedron.push([octahedronCenterRing[0],octahedronCenterRing[1],octBottomPoint])
-  octahedron.push([octahedronCenterRing[1],octahedronCenterRing[2],octBottomPoint])
-  octahedron.push([octahedronCenterRing[2],octahedronCenterRing[3],octBottomPoint])
-  octahedron.push([octahedronCenterRing[0],octahedronCenterRing[0],octBottomPoint])
-  
-  console.log(calculateDistance3D(octahedronCenterRing[0],octahedronCenterRing[1],true), octahedronEdgeLength, octTopPoint)
-  console.log(calculateDistance3D(octahedronCenterRing[3], octTopPoint,true))
-  
-  // Triangle height
-  
-  
-  // Triangle height after rotation
-  
-  
-  
-  
-  
+
+  if(domeBaseShape === 'icosahedron'){
+    //Create if only not created
+    if(!baseShapes.icosahedron){ 
+      // Icosahedron
+      for(let i=0; i<firstRing.length-1; i++){
+        // First ring
+        icosahedron.push([topPoint, firstRing[i+1], firstRing[i]])
+        // Second ring
+        icosahedron.push([bottomPoint, secondRing[i+1], secondRing[i]])
+      }
+     
+      for(let i=0; i<firstRing.length-1; i++){
+        icosahedron.push([firstRing[i], secondRing[i], firstRing[i+1]])
+        icosahedron.push([secondRing[i], firstRing[i+1], secondRing[i+1]])
+      }
+      //baseShape = icosahedron;
+      baseShapes['icosahedron'] = icosahedron;
+    }
+  }else if(domeBaseShape === 'octahedron'){
+    if(!baseShapes.octahedron){ //ignore if created
+      // Octahedron
+      //const isometricRatio = Math.sqrt(3)/2; //0.8660254037844386
+      //const triangleHeight = radius * isometricRatio;
+      //const triangleHeightRotated =  rotatePoint3D(center, {x:center.x, y:center.y, z:center.z + triangleHeight}, {x:0, y:35, z:0});
+      //const triangleCornerPoint = {{x:center.x + (center.x-triangleHeightRotated.x), y:center.y + (radius/2), z:center.z}
+      //console.log(triangleHeight, triangleHeightRotated, triangleCornerPoint)
+      //console.log(
+      //calculateDistance(pos1,pos2,positiveOnly)
+      
+      //const octCornerPoint = {x:center.x- halfRadius, y:center.y-halfRadius, z:center.z}
+      //const octTopPointStart = {x:octCornerPoint.x, y:octCornerPoint.y, z:octCornerPoint.z + radius}
+      //const octTopPoint = rotatePoint3D(octCornerPoint, octTopPointStart, {x:30, y:30, z:0});
+      //console.log(octCornerPoint, octTopPointStart, octTopPoint)
+      const octahedron = [];
+      const octahedronCenterRing = [];
+      const octahedronEdgeLength = radius * Math.sqrt(2);
+      for(let i=0; i<4; i++){
+        octahedronCenterRing.push(rotatePoint3D(center, {x:center.x + radius, y:center.y, z:center.z}, {x:0, y:0, z: (i * 90) -45}));
+      }
+      const octTopPointStart = {x:octahedronCenterRing[3].x, y:octahedronCenterRing[3].y, z:octahedronCenterRing[3].z - octahedronEdgeLength}
+      const octTopPoint = {x:center.x, y:center.y, z:center.z - radius }
+      const octBottomPoint = {x:center.x, y:center.y, z:center.z + radius }
+
+      octahedron.push([octahedronCenterRing[0],octahedronCenterRing[1],octTopPoint])
+      octahedron.push([octahedronCenterRing[1],octahedronCenterRing[2],octTopPoint])
+      octahedron.push([octahedronCenterRing[2],octahedronCenterRing[3],octTopPoint])
+      octahedron.push([octahedronCenterRing[3],octahedronCenterRing[0],octTopPoint])
+      
+      octahedron.push([octahedronCenterRing[0],octahedronCenterRing[1],octBottomPoint])
+      octahedron.push([octahedronCenterRing[1],octahedronCenterRing[2],octBottomPoint])
+      octahedron.push([octahedronCenterRing[2],octahedronCenterRing[3],octBottomPoint])
+      octahedron.push([octahedronCenterRing[3],octahedronCenterRing[0],octBottomPoint])
+      
+      //baseShape = octahedron;
+      baseShapes['octahedron'] = octahedron;
+    }
+  }else if(domeBaseShape === 'tetrahedron'){
+    if(!baseShapes.tetrahedron){ //ignore if created
+      const tetrahedron = [];
+      const tetraTopPoint = {x:center.x, y:center.y, z:center.z-radius};
+      const tetraBasePoints = [];
+      const angleFromHorizontal = Math.acos(1 / Math.sqrt(3)) * 180 / Math.PI;
+      const bAngle =  (2*angleFromHorizontal) - 90
     
-  // Icosahedron
-  for(let i=0; i<firstRing.length-1; i++){
-    // First ring
-    icosahedron.push([topPoint, firstRing[i+1], firstRing[i]])
-    // Second ring
-    icosahedron.push([bottomPoint, secondRing[i+1], secondRing[i]])
-  }
- 
-  for(let i=0; i<firstRing.length-1; i++){
-    icosahedron.push([firstRing[i], secondRing[i], firstRing[i+1]])
-    icosahedron.push([secondRing[i], firstRing[i+1], secondRing[i+1]])
+      for(let i=0; i<3; i++){
+        const basePoint = rotatePoint3D(center, {x:center.x + radius, y:center.y, z:center.z}, {x:0, y:-bAngle, z: (i * 120)});
+        tetraBasePoints.push(basePoint);
+      }
+      
+      tetrahedron.push([tetraBasePoints[0],tetraBasePoints[1],tetraTopPoint]);
+      tetrahedron.push([tetraBasePoints[1],tetraBasePoints[2],tetraTopPoint]);
+      tetrahedron.push([tetraBasePoints[2],tetraBasePoints[0],tetraTopPoint]);
+      tetrahedron.push([tetraBasePoints[0],tetraBasePoints[1], tetraBasePoints[2]]); //base
+      
+      //console.log(tetrahedron)
+      //baseShape = tetrahedron;
+      baseShapes.tetrahedron = tetrahedron;
+    }
   }
 
   const rad = radius + domeRadius;  
   
   if(domeAlternateDivision === '2V'){  
-    // 2V Sphere  
-    icosahedron.forEach(triangle => {
-      const c1 = pointAtDistance(center, triangle[0], rad ); //top cent
-      const c2 = pointAtDistance(center, triangle[1], rad); //bottom right
-      const c3 = pointAtDistance(center, triangle[2], rad); //bottom left    
-      const p1 = pointAtDistanceFromMidpoint(triangle[0], triangle[1], center, rad); //top right
-      const p2 = pointAtDistanceFromMidpoint(triangle[1], triangle[2], center, rad); //bottom cent
-      const p3 = pointAtDistanceFromMidpoint(triangle[2], triangle[0], center, rad); //top left
-      const trianglePatterns = [
+    // Create lattice for any given triangle
+    function lattice2v(triangle, center, rad, unprojected){
+      const c1 = pointAtDistance(center, triangle[0], rad , unprojected); //top cent
+      const c2 = pointAtDistance(center, triangle[1], rad, unprojected); //bottom right
+      const c3 = pointAtDistance(center, triangle[2], rad, unprojected); //bottom left    
+      const p1 = pointAtDistanceFromMidpoint(triangle[0], triangle[1], center, rad, unprojected); //top right
+      const p2 = pointAtDistanceFromMidpoint(triangle[1], triangle[2], center, rad, unprojected); //bottom cent
+      const p3 = pointAtDistanceFromMidpoint(triangle[2], triangle[0], center, rad, unprojected); //top left
+      const lattice = [
         [c1, p1, p3],
         [p1, c2, p2],
         [p3, p2, c3],
         [p1, p2, p3]
       ];
+      return lattice;      
+    }
+
+    // 2V Sphere  
+    baseShapes[domeBaseShape].forEach(triangle => {
+      const trianglePatterns = lattice2v(triangle, center, rad, false);            
       trianglePatterns.forEach(pattern => {
         if(checkWaterLine(pattern, 620)){
           allPolygons.push(pattern);
         }
       })
     });
-  }else if(domeAlternateDivision === '3V'){ 
-      // 3V Sphere
-      //triangle = icosahedron[0]
-      icosahedron.forEach(triangle => {
-      const third = 0.33333333;
-      const sixth = 0.66666666;
-      const c1 = pointAtDistance(center, triangle[0], rad ); //top cent
-      const c2 = pointAtDistance(center, triangle[1], rad); //bottom right
-      const c3 = pointAtDistance(center, triangle[2], rad); //bottom left
-      const p1 = pointAtDistanceFromMidpoint(triangle[0], triangle[1], center, rad, third); 
-      const p2 = pointAtDistanceFromMidpoint(triangle[0], triangle[1], center, rad, sixth);
-      const p3 = pointAtDistanceFromMidpoint(triangle[1], triangle[2], center, rad, third); 
-      const p4 = pointAtDistanceFromMidpoint(triangle[1], triangle[2], center, rad, sixth); 
-      const p5 = pointAtDistanceFromMidpoint(triangle[2], triangle[0], center, rad, third); 
-      const p6 = pointAtDistanceFromMidpoint(triangle[2], triangle[0], center, rad, sixth);
-      const x1 = pointAtDistanceFromMidpoint(p2, p5, center, rad); // ?second hand data
-      const trianglePatterns = [
-        [c1, p1, p6],
-        [p1, p2, x1],
-        [p2, c2, p3],
-        [x1, p3, p4],
-        [p5, p4, c3],
-        [p6, x1, p5],
-        [p6, p1, x1],
-        [x1, p2, p3],
-        [p5, x1, p4]
+    
+    createLatticeTriangle(center);
+    const latticePattern = lattice2v(latticeTriangle, getAverage(latticeTriangle), 0, true);
+    displayLatticeTriangle(latticePattern);
+    
+  }else if(domeAlternateDivision === '2V Class II'){  
+    // Create lattice for any given triangle
+    function lattice2vC2(triangle, center, rad, unprojected){
+      const c1 = pointAtDistance(center, triangle[0], rad , unprojected); //top cent
+      const c2 = pointAtDistance(center, triangle[1], rad, unprojected); //bottom right
+      const c3 = pointAtDistance(center, triangle[2], rad, unprojected); //bottom left    
+      const p1 = pointAtDistanceFromMidpoint(triangle[0], triangle[1], center, rad, unprojected); //top right
+      const p2 = pointAtDistanceFromMidpoint(triangle[1], triangle[2], center, rad, unprojected); //bottom cent
+      const p3 = pointAtDistanceFromMidpoint(triangle[2], triangle[0], center, rad, unprojected); //top left
+      const d1 = getAverage([c1,c2,c3]);
+      const x1 = pointAtDistance(center, d1, rad, unprojected);
+      
+      
+      const lattice = [
+        [c1, p1, x1],
+        [p1, c2, x1],
+        [x1, c2, p2],
+        [x1, p2, c3],
+        [p3, x1, c3],
+        [c1, x1, p3],
       ];
+      return lattice;      
+    }
+
+    // 2V Sphere  
+    baseShapes[domeBaseShape].forEach(triangle => {
+      const trianglePatterns = lattice2vC2(triangle, center, rad, false);            
       trianglePatterns.forEach(pattern => {
         if(checkWaterLine(pattern, 640)){
           allPolygons.push(pattern);
         }
       })
     });
+    
+    createLatticeTriangle(center);
+    const latticePattern = lattice2vC2(latticeTriangle, getAverage(latticeTriangle), 0, true);
+    displayLatticeTriangle(latticePattern);
+
+  }else if(domeAlternateDivision === '3V'){ 
+      // 3V Sphere
+      //triangle = icosahedron[0]
+      const unprojected = false;
+      const third = 0.33333333;
+      const sixth = 0.66666666;
+     
+      function lattice3v(triangle, center, rad, unprojected){
+        const c1 = pointAtDistance(center, triangle[0], rad, unprojected); //top cent
+        const c2 = pointAtDistance(center, triangle[1], rad, unprojected); //bottom right
+        const c3 = pointAtDistance(center, triangle[2], rad, unprojected); //bottom left
+        const p1 = pointAtDistanceFromMidpoint(triangle[0], triangle[1], center, rad, unprojected, third); 
+        const p2 = pointAtDistanceFromMidpoint(triangle[0], triangle[1], center, rad, unprojected, sixth);
+        const p3 = pointAtDistanceFromMidpoint(triangle[1], triangle[2], center, rad, unprojected, third); 
+        const p4 = pointAtDistanceFromMidpoint(triangle[1], triangle[2], center, rad, unprojected, sixth); 
+        const p5 = pointAtDistanceFromMidpoint(triangle[2], triangle[0], center, rad, unprojected, third); 
+        const p6 = pointAtDistanceFromMidpoint(triangle[2], triangle[0], center, rad, unprojected, sixth);
+        const x1 = pointAtDistanceFromMidpoint(p2, p5, center, rad); // ?second hand data
+        const lattice = [
+          [c1, p1, p6],
+          [p1, p2, x1],
+          [p2, c2, p3],
+          [x1, p3, p4],
+          [p5, p4, c3],
+          [p6, x1, p5],
+          [p6, p1, x1],
+          [x1, p2, p3],
+          [p5, x1, p4]
+        ];
+        return lattice;
+      }
+      
+      // 3v Sphere
+      baseShapes[domeBaseShape].forEach(triangle => {
+      const trianglePatterns = lattice3v(triangle, center, rad, false);
+      trianglePatterns.forEach(pattern => {
+        if(checkWaterLine(pattern, 640)){
+          allPolygons.push(pattern);
+        }
+      })
+    });
+    
+    createLatticeTriangle(center);
+    const latticePattern = lattice3v(latticeTriangle, getAverage(latticeTriangle), 0, true);
+    displayLatticeTriangle(latticePattern);
+    
+    
   }else if(domeAlternateDivision === '4V'){ 
     // 4V Sphere  
-    tri= icosahedron[0]
+    //const tri= baseShapes[domeBaseShape][0];
+    //const lattice = barycentricLattice(4);
+    //const points = lattice.map(bc =>
+    //  barycentricToPoint(tri[0], tri[1], tri[2], bc)
+    //);
+    const quater = 0.25;
+    const half = 0.5;
+    const threeQuater = 0.75;
     
-    
-    const lattice = barycentricLattice(4);
-
-    const points = lattice.map(bc =>
-      barycentricToPoint(tri[0], tri[1], tri[2], bc)
-    );
-    
-    icosahedron.forEach((triangle, index) => {
-      const quater = 0.25;
-      const half = 0.5;
-      const threeQuater = 0.75;
+    function lattice4v(triangle, center, rad, unprojected){
+      const c1 = pointAtDistance(center, triangle[0], rad, unprojected); //top cent
+      const c2 = pointAtDistance(center, triangle[1], rad, unprojected); //bottom right
+      const c3 = pointAtDistance(center, triangle[2], rad, unprojected); //bottom left
       
-      const c1 = pointAtDistance(center, triangle[0], rad ); //top cent
-      const c2 = pointAtDistance(center, triangle[1], rad); //bottom right
-      const c3 = pointAtDistance(center, triangle[2], rad); //bottom left
-      
-    const points = lattice.map(bc =>
-      barycentricToPoint(triangle[0], triangle[1], triangle[2], bc)
-    );
+      //const points = lattice.map(bc =>
+      //  barycentricToPoint(triangle[0], triangle[1], triangle[2], bc)
+      //);
 
       const p1Orig = findPointOnLine(triangle[0], triangle[1], quater);
       const p2Orig = findPointOnLine(triangle[0], triangle[1], half);
@@ -588,28 +739,28 @@ function renderView(){
       const x2Orig = findPointOnLine(p5Orig, p2Orig, half);
       const x3Orig = findPointOnLine(p8Orig, p5Orig, half);
       
-      const p1 = pointAtDistance(center, p1Orig, rad);
-      const p2 = pointAtDistance(center, p2Orig, rad);
-      const p3 = pointAtDistance(center, p3Orig, rad);     
-      const p4 = pointAtDistance(center, p4Orig, rad);
-      const p5 = pointAtDistance(center, p5Orig, rad);
-      const p6 = pointAtDistance(center, p6Orig, rad);    
-      const p7 = pointAtDistance(center, p7Orig, rad);
-      const p8 = pointAtDistance(center, p8Orig, rad);
-      const p9 = pointAtDistance(center, p9Orig, rad);  
+      const p1 = pointAtDistance(center, p1Orig, rad, unprojected);
+      const p2 = pointAtDistance(center, p2Orig, rad, unprojected);
+      const p3 = pointAtDistance(center, p3Orig, rad, unprojected);     
+      const p4 = pointAtDistance(center, p4Orig, rad, unprojected);
+      const p5 = pointAtDistance(center, p5Orig, rad, unprojected);
+      const p6 = pointAtDistance(center, p6Orig, rad, unprojected);    
+      const p7 = pointAtDistance(center, p7Orig, rad, unprojected);
+      const p8 = pointAtDistance(center, p8Orig, rad, unprojected);
+      const p9 = pointAtDistance(center, p9Orig, rad, unprojected);  
       
-      const x1 = pointAtDistance(center, x1Orig, rad); //?second hand data
-      const x2 = pointAtDistance(center, x2Orig, rad); //?second hand data
-      const x3 = pointAtDistance(center, x3Orig, rad); //?second hand data
+      const x1 = pointAtDistance(center, x1Orig, rad, unprojected); //?second hand data
+      const x2 = pointAtDistance(center, x2Orig, rad, unprojected); //?second hand data
+      const x3 = pointAtDistance(center, x3Orig, rad, unprojected); //?second hand data
 
-      if(index===0) {
+      //if(index===0) {
        // const myWorkings = [triangle[0], triangle[1], triangle[2],p1Orig, p2Orig, p3Orig ,p4Orig, p5Orig , p6Orig, p7Orig, p8Orig, p9Orig, x1Orig, x2Orig, x3Orig];
        // console.log(myWorkings);
        // const unmatched = findUnmatchedVertices(myWorkings, points)
        // console.log(unmatched);
-      }
+      //}
       
-      const trianglePatterns = [
+      const lattice = [
         [c1, p1, p9],
         [p1, p2, x1],
         [p2, p3, x2],
@@ -622,9 +773,9 @@ function renderView(){
         [p8, x3, p7],
         [p9, x1, p8],
         
-        [p9, p1, x1], //top
-        [x1, x2, x3], //cent
-        [x2, p5, x3], //cent bottom
+        [p9, p1, x1], 
+        [x1, x2, x3], 
+        [x2, p5, x3], 
     
         [p2, x2, x1],
         [x1, x3, p8],
@@ -633,28 +784,34 @@ function renderView(){
         [x3, p6, p7],
         
       ];
+      return lattice;
+    
+    }
+    
+    baseShapes[domeBaseShape].forEach((triangle, index) => {
+      const trianglePatterns = lattice4v(triangle, center, rad, false);
       trianglePatterns.forEach(pattern => {
         if(checkWaterLine(pattern, 620)){
           allPolygons.push(pattern);
         }
       })
     });
+    
+    createLatticeTriangle(center);
+    const latticePattern = lattice4v(latticeTriangle, getAverage(latticeTriangle), 0, true);
+    displayLatticeTriangle(latticePattern);
+    
   }else if(domeAlternateDivision === '4V Faceted'){
     const half = 0.5;
     // 4V Faceted  
-    icosahedron.forEach(triangle => {
-      
-      //const triangle = icosahedron[0];
-    
-      // Original point map
-      
+    function lattice4vFaceted(triangle, center, rad, unprojected){
       const a1 = triangle[0]; //top cent
       const a2 = triangle[1]; //bottom right
       const a3 = triangle[2]; //bottom left    
       
-      const c1 = pointAtDistance(center, a1, rad);
-      const c2 = pointAtDistance(center, a2, rad);
-      const c3 = pointAtDistance(center, a3, rad);
+      const c1 = pointAtDistance(center, a1, rad, unprojected);
+      const c2 = pointAtDistance(center, a2, rad, unprojected);
+      const c3 = pointAtDistance(center, a3, rad, unprojected);
 
       const d1 = findPointOnLine(a1, a2, half);
       const d2 = findPointOnLine(a2, a3, half);
@@ -665,20 +822,18 @@ function renderView(){
       const xd3 = getAverage([d3, d2, a3]);
       const xd4 = getAverage([d1, d2, d3]);
             
-      const p1 = pointAtDistance(center, d1, rad);
-      const p2 = pointAtDistance(center, d2, rad);
-      const p3 = pointAtDistance(center, d3, rad);     
+      const p1 = pointAtDistance(center, d1, rad, unprojected);
+      const p2 = pointAtDistance(center, d2, rad, unprojected);
+      const p3 = pointAtDistance(center, d3, rad, unprojected);     
       
-      const facetFactor = 10;
+      const facetFactor = 0;
             
-      const x1 = pointAtDistance(center, xd1, rad + facetFactor);
-      const x2 = pointAtDistance(center, xd2, rad + facetFactor);
-      const x3 = pointAtDistance(center, xd3, rad + facetFactor);
-      const x4 = pointAtDistance(center, xd4, rad + facetFactor);
-      
-      
-      
-     const trianglePatterns = [
+      const x1 = pointAtDistance(center, xd1, rad + facetFactor, unprojected);
+      const x2 = pointAtDistance(center, xd2, rad + facetFactor, unprojected);
+      const x3 = pointAtDistance(center, xd3, rad + facetFactor, unprojected);
+      const x4 = pointAtDistance(center, xd4, rad + facetFactor, unprojected);
+
+     const lattice = [
         [c1, p1, x1],
         [x1, p1, p3],
         [c1, x1, p3],
@@ -694,36 +849,34 @@ function renderView(){
         [p3, p1, x4], 
         [p1, p2, x4], 
         [p3, x4, p2], 
-
-        
       ];
-      
-      
+      return lattice;
+    }
+    
+    baseShapes[domeBaseShape].forEach(triangle => {      
+      const trianglePatterns = lattice4vFaceted(triangle, center, rad, false);
       trianglePatterns.forEach(pattern => {
         if(checkWaterLine(pattern, 620)){
           allPolygons.push(pattern);
         }
-      })
-   
+      });   
    });
-  
-  console.log(JSON.stringify(allPolygons))
-    
-  
-  
+   //console.log(JSON.stringify(allPolygons))   
+    createLatticeTriangle(center);
+    const latticePattern = lattice4vFaceted(latticeTriangle, getAverage(latticeTriangle), 0, true);
+    displayLatticeTriangle(latticePattern);
+   
   }  
   const strutGroups = computeStrutGroups(allPolygons, 1e-5);
-
   
-  if(domeShowIcosahedron){
-    drawPolygons(icosahedron, center, '#12563450', 'new');
+  if(domeShowBaseShape){
+    drawPolygons(baseShapes[domeBaseShape], center, '#12563450', 'new');
     drawPolygons(allPolygons, center, '#12345680', 'render');
   }else{
-    drawPolygons(octahedron, center, '#12345680', 'single');
-    //drawPolygons(allPolygons, center, '#12345680', 'single');
+    drawPolygons(allPolygons, center, '#12345680', 'single');
   }
 
-  
+  // Draw Edges
   topViewLayerEdge.innerHTML = '';
   sideViewLayerEdge.innerHTML = '';
     
