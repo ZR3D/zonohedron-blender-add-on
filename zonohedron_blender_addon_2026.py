@@ -23,8 +23,8 @@ import copy
 bl_info = {
     "name": "Add Zonohedron",
     "author": "Zac Rogers",
-    "version": (1, 3),
-    'blender': (2, 80, 0),
+    "version": (1, 4),
+    'blender': (3, 0, 0),
     "location": "View3D > Tools > Add Zonohedron",
     "description": "Add Zonohedron Mesh",
     "warning": "",
@@ -34,7 +34,7 @@ bl_info = {
 
 # Installation Instructions
 # 1 Copy this file to your Blender 3D Add-ons folder
-# 2 Go to File->User Preferences
+# 2 Go to File -> User Preferences
 # 3 Click on the Add-ons Tab
 # 4 Under category 'Mesh' select 'Mesh: Add Zonohedron' & click the checkbox
 # 5 Click on Save User Settings
@@ -54,7 +54,6 @@ class zoneData:
 def scale_center_clean(obj):
     # Set the physical dimensions
     scale = zoneData.width / obj.dimensions.x
-    print(scale, zoneData.width, obj.dimensions.x) 
     obj.dimensions = (
         zoneData.width, 
         obj.dimensions.y * scale, 
@@ -87,35 +86,37 @@ def scale_center_clean(obj):
     # Now call the operator to reset the scale/location/rotation to the data
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
-def create_from_json_data(poly_data):
-    all_verts = []
-    all_faces = []
+def create_from_json_data(poly_data, object_name, mesh_name):
+    verts = []
+    faces = []
 
-    # Process the nested list
-    for i, polygon in enumerate(poly_data):
-        # Extract the x, y, z from each dictionary and add to the master list
+    for polygon in poly_data:
+        if len(polygon) < 3:
+            continue  # At least 3 verts for a face
+
+        face_indices = []
+
         for v in polygon:
-            all_verts.append((v['x'], v['y'], v['z']))
+            verts.append((v["x"], v["y"], v["z"]))
+            face_indices.append(len(verts) - 1)
 
-        # Calculate indices for this face, (0,1,2,3),(4,5,6,7)
-        start_idx = i * 4
-        face_indices = (start_idx, start_idx + 1, start_idx + 2, start_idx + 3)
-        all_faces.append(face_indices)
+        faces.append(face_indices)
 
-    # Standard Blender mesh creation
-    mesh_data = bpy.data.meshes.new("JsonMesh")
-    mesh_obj = bpy.data.objects.new("JsonObject", mesh_data)
+    mesh_data = bpy.data.meshes.new(mesh_name)
+    mesh_obj = bpy.data.objects.new(object_name, mesh_data)
     bpy.context.collection.objects.link(mesh_obj)
 
-    # Create the geometry
-    mesh_data.from_pydata(all_verts, [], all_faces)
+    mesh_data.from_pydata(verts, [], faces)
     mesh_data.update()
+
     scale_center_clean(mesh_obj)
+
+    return mesh_obj
 
 def create_edges_from_json_data(poly_data, obj_name="EdgeObject", closed=False):
     verts = []
-    vert_index_map = {}
     edges = []
+    vert_index_map = {}
 
     def get_vert_index(v):
         key = (v["x"], v["y"], v["z"])
@@ -424,16 +425,16 @@ def draw_zonohedron():
     if zoneData.zono_type == 'standard':
         zoneData.detail = 1
         result = create_zonohedron()
-        create_from_json_data(result)
+        create_from_json_data(result, 'Zonohedron', 'ZonohedronMesh')
     if zoneData.zono_type == 'spirallohedra':
         result = create_zonohedron()
-        create_from_json_data(result)
+        create_from_json_data(result, 'Spirallohedra', 'SpirallohedraMesh')
     if zoneData.zono_type == 'spiral':
         result = create_spiral_zonohedron()
-        create_from_json_data(result)        
+        create_from_json_data(result, 'ZonohedronSpiral', 'ZonohedronSpiralMesh')
     if zoneData.zono_type == 'curved':
         edge_data = create_curved_zonohedron()
-        result = create_edges_from_json_data(edge_data)
+        result = create_edges_from_json_data(edge_data, 'ZonohedronCurved')
 
 # --- Interface start ---
 class ZONO_PT_ZonohedronMaker(bpy.types.Panel):
